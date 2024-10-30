@@ -10,6 +10,7 @@ end )
 
 TENSION_TBL.significantConstraints = TENSION_TBL.significantConstraints or {}
 TENSION_TBL.nextGlobalEcho = 0
+TENSION_TBL.nextPontoonImpact = 0
 TENSION_TBL.nextBigFallAmbiance = 0
 
 local IsValid = IsValid
@@ -182,7 +183,7 @@ local function sparkEffect( sparkPos, scale )
 
 end
 
-local function snapGibs( sparkPos, ent, scale )
+local function snapGibsMetal( sparkPos, ent, scale )
     local gibEff = EffectData()
     gibEff:SetOrigin( sparkPos )
     gibEff:SetMagnitude( math.ceil( 2 * scale ) )
@@ -192,22 +193,49 @@ local function snapGibs( sparkPos, ent, scale )
 
 end
 
+local function snapGibsWood( sparkPos, ent, scale )
+    local gibEff = EffectData()
+    gibEff:SetOrigin( sparkPos )
+    gibEff:SetMagnitude( math.ceil( 2 * scale ) )
+    gibEff:SetScale( math.ceil( 0.5 * scale ) )
+    gibEff:SetEntity( ent )
+    util.Effect( "eff_tension_woodgibs", gibEff )
+
+end
+
 function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
-    local sparkScale = significance / math.random( 15000, 100000 )
-    if sparkScale > 0.15 and getMaterialForEnt( ent1 ) == "generic" and getMaterialForEnt( ent2 ) == "generic" then
-        local ent1sCenter = ent1:WorldSpaceCenter()
-        local ent2sCenter = ent2:WorldSpaceCenter()
+    local ent1Mat = getMaterialForEnt( ent1 )
+    local ent2Mat = getMaterialForEnt( ent2 )
+    if ent1Mat == "generic" and ent2Mat == "generic" then
+        local sparkScale = significance / math.random( 15000, 100000 )
+        if sparkScale > 0.15 then
+            local ent1sCenter = ent1:WorldSpaceCenter()
+            local ent2sCenter = ent2:WorldSpaceCenter()
 
-        local ent1sNearest = ent1:NearestPoint( ent2sCenter )
-        local ent2sNearest = ent2:NearestPoint( ent1sCenter )
+            local ent1sNearest = ent1:NearestPoint( ent2sCenter )
+            local ent2sNearest = ent2:NearestPoint( ent1sCenter )
 
-        sparkEffect( ent1sNearest, sparkScale )
-        sparkEffect( ent2sNearest, sparkScale )
+            sparkEffect( ent1sNearest, sparkScale )
+            sparkEffect( ent2sNearest, sparkScale )
 
-        local gibScale = significance / 15000
-        snapGibs( ent1sNearest, ent1, gibScale )
-        snapGibs( ent2sNearest, ent2, gibScale )
+            local gibScale = significance / 15000
+            snapGibsWood( ent1sNearest, ent1, gibScale )
+            snapGibsWood( ent2sNearest, ent2, gibScale )
+        end
+    elseif ent1Mat == "wood" and ent2Mat == "wood" then
+        local splinterScale = significance / math.random( 500, 7500 )
+        if splinterScale > 0.05 then
+            local ent1sCenter = ent1:WorldSpaceCenter()
+            local ent2sCenter = ent2:WorldSpaceCenter()
 
+            local ent1sNearest = ent1:NearestPoint( ent2sCenter )
+            local ent2sNearest = ent2:NearestPoint( ent1sCenter )
+
+            local gibScale = significance / 500
+            snapGibsWood( ent1sNearest, ent1, gibScale )
+            snapGibsWood( ent2sNearest, ent2, gibScale )
+
+        end
     end
 end
 
@@ -793,8 +821,22 @@ function TENSION_TBL.bigFallEffects( ent, obj )
                     end
                 end
                 echoFilter:AddPlayers( farEnoughPlys )
-                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 10, 30 ), 1, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
+                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 15, 30 ), 1, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
 
+                -- give punch to first impact
+                if TENSION_TBL.nextPontoonImpact < CurTime() then
+                    TENSION_TBL.nextPontoonImpact = CurTime() + math.Rand( 0.5, 1 )
+                    local nearHitPath = "vehicles/airboat/pontoon_impact_hard" .. math.random( 1, 2 ) .. ".wav"
+                    local pit = math.random( 60, 70 )
+                    pit = pit + -( mass / 2500 )
+                    pit = pit + -( bestSpeed / 2500 )
+                    pit = math.Clamp( pit, math.random( 25, 35 ), 100 )
+                    ent:EmitSound( nearHitPath, 120, pit, 1 )
+
+                else
+                    TENSION_TBL.nextPontoonImpact = CurTime() + math.Rand( 1, 2 )
+
+                end
             end
         end
     end )

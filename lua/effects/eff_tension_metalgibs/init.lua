@@ -1,7 +1,4 @@
 
-local math = math
-local precached
-
 local gibModels = {
     "models/props_debris/rebar001a_32.mdl",
     "models/props_debris/rebar001b_48.mdl",
@@ -59,9 +56,14 @@ local gibModels = {
     "models/props_debris/concrete_column001a_chunk09.mdl",
 
 }
+local precachedGibMdls
+
+local math = math
+local Color = Color
 
 function EFFECT:Init( data )
-    if not precached then
+    if not precachedGibMdls then
+        precachedGibMdls = true
         for _, mdl in ipairs( gibModels ) do
             util.PrecacheModel( mdl )
 
@@ -94,7 +96,7 @@ function EFFECT:Init( data )
     for _ = 1, self.GibCount do
         local mdl = gibModels[math.random( 1, #gibModels )]
         local gib = ents.CreateClientProp( mdl )
-        SafeRemoveEntityDelayed( gib, lifetime )
+        SafeRemoveEntityDelayed( gib, lifetime * 2 ) -- backup
         gib:SetPos( self.Position + VectorRand() * math.random( 5, 25 ) )
         gib:SetAngles( AngleRand() )
         gib:SetCollisionGroup( COLLISION_GROUP_DEBRIS )
@@ -108,7 +110,7 @@ function EFFECT:Init( data )
             speed = vel:Length()
 
         else
-            vel = VectorRand( self.Scale * 500 )
+            vel = VectorRand() * self.Scale * 500
             speed = vel:Length()
 
         end
@@ -118,12 +120,33 @@ function EFFECT:Init( data )
         angVel = VectorRand() * added
 
         local gibsObj = gib:GetPhysicsObject()
+        if not IsValid( gibsObj ) then SafeRemoveEntity( gib ) continue end
         gibsObj:SetVelocity( vel )
         gibsObj:SetAngleVelocity( angVel )
 
+        timer.Simple( lifetime, function()
+            if not IsValid( gib ) then return end
+            gib:SetRenderMode( RENDERMODE_TRANSCOLOR )
+            local timerName = "tension_fadeouthack_" .. gib:GetCreationID()
+            local alpha = 255
 
+            timer.Create( timerName, 0, 0, function()
+                if not IsValid( gib ) then timer.Remove( timerName ) return end
+                local oldColor = gib:GetColor()
+                alpha = math.Clamp( alpha + -1, 0, 255 )
+
+                if alpha <= 0 then
+                    SafeRemoveEntity( gib )
+                    timer.Remove( timerName )
+
+                else
+                    local newColor = Color( oldColor.r, oldColor.g, oldColor.b, alpha )
+                    gib:SetColor( newColor )
+
+                end
+            end )
+        end )
     end
-
 end
 
 function EFFECT:Render()
