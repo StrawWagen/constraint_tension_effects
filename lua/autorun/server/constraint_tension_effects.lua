@@ -1,17 +1,24 @@
 
 TENSION_TBL = TENSION_TBL or {}
 
-local enabledVar = CreateConVar( "tension_enabled", 1, FCVAR_ARCHIVE, "Enable/disable tension" )
+local enabledVar = CreateConVar( "tension_sv_enabled", 1, FCVAR_ARCHIVE, "Enable/disable tension." )
 local enabled = enabledVar:GetBool()
-cvars.AddChangeCallback( "tension_enabled", function( _, _, new )
+cvars.AddChangeCallback( "tension_sv_enabled", function( _, _, new )
     enabled = tobool( new )
+
+end )
+
+local shakeEnabledVar = CreateConVar( "tension_sv_screenshake_enabled", 1, FCVAR_ARCHIVE, "Enable/disable tension screenshake." )
+local shakeEnabled = shakeEnabledVar:GetBool()
+cvars.AddChangeCallback( "tension_screenshake_enabled", function( _, _, new )
+    shakeEnabled = tobool( new )
 
 end )
 
 TENSION_TBL.significantConstraints = TENSION_TBL.significantConstraints or {}
 TENSION_TBL.nextGlobalEcho = 0
-TENSION_TBL.nextPontoonImpact = 0
 TENSION_TBL.nextBigFallAmbiance = 0
+TENSION_TBL.doBigFallAmbiance = 0
 
 local IsValid = IsValid
 local string_lower = string.lower
@@ -126,7 +133,12 @@ local function playSoundDat( ent, dat )
     end
 
     shake = dat.shake
-    if shake then
+    if shake and shakeEnabled then
+        local obj = ent:GetPhysicsObject()
+        if IsValid( obj ) and not obj:IsMotionEnabled() then
+            shake.amp = shake.amp / 10
+
+        end
         util.ScreenShake( ent:GetPos(), shake.amp, 20, shake.amp / 10, shake.rad, true )
 
     end
@@ -207,8 +219,8 @@ function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
     local ent1Mat = getMaterialForEnt( ent1 )
     local ent2Mat = getMaterialForEnt( ent2 )
     if ent1Mat == "generic" and ent2Mat == "generic" then
-        local sparkScale = significance / math.random( 15000, 100000 )
-        if sparkScale > 0.15 then
+        local sparkScale = significance / math.random( 30000, 100000 )
+        if sparkScale > 0.1 then
             local ent1sCenter = ent1:WorldSpaceCenter()
             local ent2sCenter = ent2:WorldSpaceCenter()
 
@@ -219,8 +231,8 @@ function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
             sparkEffect( ent2sNearest, sparkScale )
 
             local gibScale = significance / 15000
-            snapGibsWood( ent1sNearest, ent1, gibScale )
-            snapGibsWood( ent2sNearest, ent2, gibScale )
+            snapGibsMetal( ent1sNearest, ent1, gibScale )
+            snapGibsMetal( ent2sNearest, ent2, gibScale )
         end
     elseif ent1Mat == "wood" and ent2Mat == "wood" then
         local splinterScale = significance / math.random( 500, 7500 )
@@ -273,7 +285,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 68,
                 minpitch = 90,
                 maxpitch = 110,
-                shake = { rad = 500, amp = 1 }
+                shake = { rad = 500, amp = 0.5 }
             },
             wood = {
                 paths = {
@@ -289,7 +301,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 70,
                 minpitch = 80,
                 maxpitch = 110,
-                shake = { rad = 500, amp = 2 }
+                shake = { rad = 500, amp = 1 }
             },
         }
     },
@@ -314,7 +326,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 72,
                 minpitch = 80,
                 maxpitch = 100,
-                shake = { rad = 1000, amp = 2 }
+                shake = { rad = 1000, amp = 1 }
             },
             wood = {
                 paths = {
@@ -330,7 +342,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 78,
                 minpitch = 60,
                 maxpitch = 80,
-                shake = { rad = 1000, amp = 4 }
+                shake = { rad = 1000, amp = 2 }
             },
         }
     },
@@ -359,7 +371,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 76,
                 minpitch = 75,
                 maxpitch = 95,
-                shake = { rad = 1500, amp = 4 }
+                shake = { rad = 1500, amp = 2 }
             },
             wood = {
                 paths = {
@@ -372,7 +384,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 82,
                 minpitch = 50,
                 maxpitch = 70,
-                shake = { rad = 1500, amp = 4 }
+                shake = { rad = 1500, amp = 2 }
             },
         }
     },
@@ -394,7 +406,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 78,
                 minpitch = 80,
                 maxpitch = 110,
-                shake = { rad = 2000, amp = 6 }
+                shake = { rad = 2000, amp = 3 }
             },
             wood = {
                 paths = {
@@ -408,7 +420,7 @@ TENSION_TBL.stressSounds = {
                 minpitch = 40,
                 maxpitch = 60,
                 twicedoublepitch = true,
-                shake = { rad = 2000, amp = 6 }
+                shake = { rad = 2000, amp = 3 }
             },
         }
     },
@@ -429,7 +441,7 @@ TENSION_TBL.stressSounds = {
                 lvl = 88,
                 minpitch = 30,
                 maxpitch = 60,
-                shake = { rad = 5000, amp = 15 }
+                shake = { rad = 5000, amp = 7 }
             },
             wood = {
                 paths = {
@@ -440,14 +452,14 @@ TENSION_TBL.stressSounds = {
                     "physics/wood/wood_plank_break3.wav",
                     "physics/wood/wood_plank_break4.wav",
                     "physics/wood/wood_plank_impact_hard5.wav",
-    
+
                 },
                 chan = CHAN_STATIC,
                 lvl = 92,
                 minpitch = 20,
                 maxpitch = 50,
                 twicedoublepitch = true,
-                shake = { rad = 5000, amp = 8 }
+                shake = { rad = 5000, amp = 4 }
             },
         },
     },
@@ -479,7 +491,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 68,
                 minpitch = 110,
                 maxpitch = 160,
-                shake = { rad = 500, amp = 1 }
+                shake = { rad = 500, amp = 0.5 }
             },
             wood = {
                 paths = {
@@ -494,7 +506,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 80,
                 minpitch = 110,
                 maxpitch = 150,
-                shake = { rad = 500, amp = 2 }
+                shake = { rad = 500, amp = 1 }
             },
         }
     },
@@ -517,7 +529,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 78,
                 minpitch = 95,
                 maxpitch = 110,
-                shake = { rad = 500, amp = 1 }
+                shake = { rad = 500, amp = 0.5 }
             },
             wood = {
                 paths = {
@@ -536,7 +548,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 82,
                 minpitch = 95,
                 maxpitch = 110,
-                shake = { rad = 500, amp = 2 }
+                shake = { rad = 500, amp = 1 }
             },
         }
     },
@@ -556,7 +568,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 84,
                 minpitch = 90,
                 maxpitch = 120,
-                shake = { rad = 3000, amp = 10 }
+                shake = { rad = 3000, amp = 5 }
             },
             wood = {
                 paths = {
@@ -569,7 +581,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 88,
                 minpitch = 90,
                 maxpitch = 120,
-                shake = { rad = 3000, amp = 10 }
+                shake = { rad = 3000, amp = 5 }
             },
         }
     },
@@ -589,7 +601,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 88,
                 minpitch = 80,
                 maxpitch = 150,
-                shake = { rad = 3000, amp = 10 }
+                shake = { rad = 3000, amp = 5 }
             },
             wood = {
                 paths = {
@@ -607,7 +619,7 @@ TENSION_TBL.snapSounds = {
                 minpitch = 10,
                 maxpitch = 30,
                 twicedoublepitch = true,
-                shake = { rad = 3000, amp = 10 }
+                shake = { rad = 3000, amp = 5 }
             },
         }
     },
@@ -628,7 +640,7 @@ TENSION_TBL.snapSounds = {
                 lvl = 90,
                 minpitch = 80,
                 maxpitch = 150,
-                shake = { rad = 3000, amp = 10 }
+                shake = { rad = 3000, amp = 5 }
             },
         },
         wood = {
@@ -646,7 +658,7 @@ TENSION_TBL.snapSounds = {
                 minpitch = 5,
                 maxpitch = 20,
                 twicedoublepitch = true,
-                shake = { rad = 3000, amp = 15 }
+                shake = { rad = 3000, amp = 7.5 }
             },
         }
     },
@@ -670,7 +682,7 @@ TENSION_TBL.snapSounds = {
                 minpitch = 40,
                 maxpitch = 60,
                 twicedoublepitch = true,
-                shake = { rad = 4000, amp = 60 }
+                shake = { rad = 4000, amp = 40 }
             },
             wood = {
                 paths = {
@@ -683,7 +695,7 @@ TENSION_TBL.snapSounds = {
                 minpitch = 5,
                 maxpitch = 15,
                 twicedoublepitch = true,
-                shake = { rad = 4000, amp = 60 }
+                shake = { rad = 4000, amp = 40 }
             },
         }
     },
@@ -699,6 +711,16 @@ local wooshShounds = {
     "physics/nearmiss/whoosh_large4.wav",
     "physics/nearmiss/whoosh_huge1.wav",
     "physics/nearmiss/whoosh_huge2.wav",
+
+}
+
+local nearHitSounds = {
+    "vehicles/airboat/pontoon_impact_hard1.wav",
+    "vehicles/airboat/pontoon_impact_hard2.wav",
+    "doors/door_metal_large_chamber_close1.wav",
+    "physics/concrete/boulder_impact_hard1.wav",
+    "physics/concrete/boulder_impact_hard2.wav",
+    "physics/concrete/boulder_impact_hard3.wav"
 
 }
 
@@ -741,7 +763,10 @@ function TENSION_TBL.bigFallEffects( ent, obj )
         else
             tensionFallInfo.increasesInARow = tensionFallInfo.increasesInARow + 1
             tensionFallInfo.decreasesInARow = 0
+            if tensionFallInfo.increasesInARow >= 4 then
+                tensionFallInfo.tension_BounceSoundDone = nil
 
+            end
         end
         if not tensionFallInfo.doneFallWoosh and currLengSqr > 750^2 and tensionFallInfo.increasesInARow > math_random( 15, 35 ) and obj:GetMass() > math_random( 5000, 15000 ) then
             tensionFallInfo.doneFallWoosh = true
@@ -767,11 +792,31 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             TENSION_TBL.playStressSound( ent, nil, ( speed + obj:GetMass() ) * 20 )
 
-        elseif tensionFallInfo.decreasesInARow > 10 or currLengSqr < 25^2 then
+        elseif tensionFallInfo.decreasesInARow >= 1 or currLengSqr < 25^2 then
+            local mass = obj:GetMass()
+            local volume = obj:GetVolume()
+
+            local passVolume = volume > math_random( 641002, 854670 ) -- mmm, magic numbers
+            local bestSpeedSqr = tensionFallInfo.bestSpeedAchieved
+
+            -- give punch to bouncing debris
+            if bestSpeedSqr > 1000^2 and mass > 5000 and passVolume and not tensionFallInfo.tension_BounceSoundDone then
+                tensionFallInfo.tension_BounceSoundDone = true
+                local nearHitPath = nearHitSounds[math.random( 1, #nearHitSounds )]
+                local speedComp = math.sqrt( bestSpeedSqr ) / 2000
+                local pit = math.random( 60, 70 )
+                pit = pit + -( mass / 2500 )
+                pit = pit + -speedComp
+                pit = math.Clamp( pit, math.random( 25, 35 ), 100 )
+                ent:EmitSound( nearHitPath, 88 + speedComp, pit, 1 )
+
+            end
+
+            if tensionFallInfo.decreasesInARow < 10 and currLengSqr > 25^2 then return end
+
             ent.tensionFallInfo = nil
             timer.Remove( timerId )
 
-            local bestSpeedSqr = tensionFallInfo.bestSpeedAchieved
             if bestSpeedSqr < 500^2 then return end
 
             local myPos = ent:WorldSpaceCenter()
@@ -788,11 +833,15 @@ function TENSION_TBL.bigFallEffects( ent, obj )
                 dust:SetScale( scale )
             util.Effect( "eff_tension_dustpuff", dust )
 
-            local mass = obj:GetMass()
-            if scale <= math_random( 2, 15 ) or mass <= math_random( 1000, 5000 ) then return end
+            local passMass = mass > math_random( 1000, 5000 )
+            if scale <= math_random( 2, 15 ) or not passVolume or not passMass then return end 
 
-            if TENSION_TBL.nextBigFallAmbiance < CurTime() then
-                TENSION_TBL.nextBigFallAmbiance = CurTime() + 0.08
+            if TENSION_TBL.doBigFallAmbiance < CurTime() then -- dont do the ambiance with just 1 thing....
+                TENSION_TBL.doBigFallAmbiance = CurTime() + 0.5
+
+            elseif TENSION_TBL.nextBigFallAmbiance < CurTime() then
+                TENSION_TBL.doBigFallAmbiance = CurTime() + 0.5
+                TENSION_TBL.nextBigFallAmbiance = CurTime() + 0.16
                 local pit = 50
                 local lvl = 75
                 lvl = lvl + scale
@@ -809,7 +858,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
             end
 
             -- instant stop, fell fast, and we're really heavy, ECHO!
-            if TENSION_TBL.nextGlobalEcho < CurTime() and tensionFallInfo.decreasesInARow <= 10 and bestSpeed > 1500 and obj:GetMass() >= 5000 then
+            if TENSION_TBL.nextGlobalEcho < CurTime() and tensionFallInfo.decreasesInARow <= 11 and bestSpeed > 1500 and mass >= 5000 then
                 TENSION_TBL.nextGlobalEcho = CurTime() + 0.25
                 local echoFilter = RecipientFilter()
                 local farEnoughPlys = {}
@@ -821,22 +870,13 @@ function TENSION_TBL.bigFallEffects( ent, obj )
                     end
                 end
                 echoFilter:AddPlayers( farEnoughPlys )
-                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 15, 30 ), 1, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
 
-                -- give punch to first impact
-                if TENSION_TBL.nextPontoonImpact < CurTime() then
-                    TENSION_TBL.nextPontoonImpact = CurTime() + math.Rand( 0.5, 1 )
-                    local nearHitPath = "vehicles/airboat/pontoon_impact_hard" .. math.random( 1, 2 ) .. ".wav"
-                    local pit = math.random( 60, 70 )
-                    pit = pit + -( mass / 2500 )
-                    pit = pit + -( bestSpeed / 2500 )
-                    pit = math.Clamp( pit, math.random( 25, 35 ), 100 )
-                    ent:EmitSound( nearHitPath, 120, pit, 1 )
-
-                else
-                    TENSION_TBL.nextPontoonImpact = CurTime() + math.Rand( 1, 2 )
+                if shakeEnabled then
+                    util.ScreenShake( ent:GetPos(), 2, 10, 12, 15000, true, echoFilter )
 
                 end
+                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 15, 30 ), 1, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
+
             end
         end
     end )
@@ -910,16 +950,22 @@ hook.Add( "Think", "tension_stresssounds", function()
 
         if stressDiff > math_random( 25, 250 ) then
 
-            local add = stressDiff / 750
+            local obj1Mass = obj1:GetMass()
+            local obj2Mass = obj2:GetMass()
+
+            local clamp = obj1Mass + obj2Mass
+            stressDiff = math.Clamp( stressDiff, 0, clamp ) -- so tiny stuff doesnt make bridge tension noises!
+
+            local nextSndAdd = stressDiff / 750
             if stressDiff < 1000 then
-                add = add + 1
+                nextSndAdd = nextSndAdd + 1
 
             end
-            data.nextSnd = cur + add
+            data.nextSnd = cur + nextSndAdd
 
             local mostMass
             local leastMass
-            if obj1:GetMass() > obj2:GetMass() then
+            if obj1Mass > obj2Mass then
                 mostMass = data.ent1
                 leastMass = data.ent2
             else

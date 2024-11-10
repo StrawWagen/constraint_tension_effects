@@ -117,7 +117,7 @@ function EFFECT:Init( data )
 
         local added = ( speed / 8 )
         vel = vel + ( VectorRand() * added )
-        angVel = VectorRand() * added
+        angVel = VectorRand() * added * math.Rand( 1, 10 )
 
         local gibsObj = gib:GetPhysicsObject()
         if not IsValid( gibsObj ) then SafeRemoveEntity( gib ) continue end
