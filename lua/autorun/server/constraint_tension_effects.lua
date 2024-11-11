@@ -858,11 +858,11 @@ function TENSION_TBL.bigFallEffects( ent, obj )
             end
 
             -- instant stop, fell fast, and we're really heavy, ECHO!
-            if TENSION_TBL.nextGlobalEcho < CurTime() and tensionFallInfo.decreasesInARow <= 11 and bestSpeed > 1500 and mass >= 5000 then
+            if TENSION_TBL.nextGlobalEcho < CurTime() and tensionFallInfo.decreasesInARow <= 11 and bestSpeed > 500 and mass >= 5000 then
                 TENSION_TBL.nextGlobalEcho = CurTime() + 0.25
                 local echoFilter = RecipientFilter()
                 local farEnoughPlys = {}
-                local dist = 5000
+                local dist = 3500
                 for _, ply in player.Iterator() do
                     if ply:GetPos():Distance( myPos ) > dist then
                         table.insert( farEnoughPlys, ply )
@@ -871,11 +871,14 @@ function TENSION_TBL.bigFallEffects( ent, obj )
                 end
                 echoFilter:AddPlayers( farEnoughPlys )
 
+                local speedScale = bestSpeed / 1500 -- 1500 is max scale
+                speedScale = math.Clamp( speedScale, 0, 1 )
+
                 if shakeEnabled then
-                    util.ScreenShake( ent:GetPos(), 2, 10, 12, 15000, true, echoFilter )
+                    util.ScreenShake( ent:GetPos(), 2 * speedScale, 10, 12, 15000, true, echoFilter )
 
                 end
-                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 15, 30 ), 1, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
+                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 15, 30 ), speedScale, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
 
             end
         end
