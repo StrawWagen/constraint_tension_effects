@@ -25,6 +25,47 @@ local string_lower = string.lower
 local string_find = string.find
 local math_random = math.random
 
+local potentialMaterials = {
+    "wood",
+    --"concrete", -- not enough super heavy concrete sounds
+}
+
+local function getMaterialForEnt( ent )
+    if not IsValid( ent ) then return end
+
+    local cached = ent.tension_CachedSoundMaterial
+    if cached then return cached end
+
+    local stringToCheck = ent:GetMaterial()
+
+    if stringToCheck == "" then
+        local entsObj = ent:GetPhysicsObject()
+        if IsValid( entsObj ) then
+            stringToCheck = entsObj:GetMaterial()
+
+        end
+    end
+
+    local loweredStr = string_lower( stringToCheck )
+    local theMat = "generic"
+
+    for _, currMat in ipairs( potentialMaterials ) do
+        if string_find( loweredStr, currMat ) then
+            theMat = currMat
+            break
+
+        end
+    end
+
+    ent.tension_CachedSoundMaterial = theMat
+
+    timer.Simple( 5, function()
+        if not IsValid( ent ) then return end
+        ent.tension_CachedSoundMaterial = nil
+
+    end )
+end
+
 local function getConstraintSignificance( const )
     local keys = const:GetKeyValues()
     local strength = math.max( keys.forcelimit, keys.torquelimit )
@@ -90,10 +131,43 @@ local function HandleSNAP( const )
         end
     end
 
+    local obj1 = ent1 and ent1:GetPhysicsObject()
+    local obj2 = ent2 and ent2:GetPhysicsObject()
+
+    if not ( IsValid( obj1 ) and IsValid( obj2 ) ) then return end
+
+    local obj1Mass = obj1:GetMass()
+    local obj2Mass = obj2:GetMass()
+
+    local leastMass
+    local mostMass
+    if obj1Mass > obj2Mass then
+        leastMass = ent2
+        mostMass = ent1
+    else
+        leastMass = ent1
+        mostMass = ent2
+
+    end
+
+    local ent1sHealth = leastMass:GetMaxHealth()
+    local ent2sHealth = mostMass:GetMaxHealth()
+
+    local oneHadHealth = ent1sHealth > 1 or ent2sHealth > 1 -- all prop_physics has 1 health??
+    local matFallback = getMaterialForEnt( leastMass )
+
     timer.Simple( 0, function()
-        if not ( IsValid( ent1 ) and IsValid( ent2 ) ) then return end -- was removed!
-        TENSION_TBL.playSnapSound( ent1, ent2, significance )
-        TENSION_TBL.playSnapEffects( ent1, ent2, significance )
+        if oneHadHealth then
+            local oneIsValid = IsValid( leastMass ) or IsValid( mostMass )
+            if not oneIsValid then return end -- assume it was removed ( not like we can play sounds on NULL ents anyway )
+
+        elseif not ( IsValid( leastMass ) and IsValid( mostMass ) ) then
+            return
+
+        end
+
+        TENSION_TBL.playSnapSound( leastMass, mostMass, significance, matFallback )
+        TENSION_TBL.playSnapEffects( leastMass, mostMass, significance )
 
     end )
 end
@@ -144,45 +218,6 @@ local function playSoundDat( ent, dat )
     end
 end
 
-local potentialMaterials = {
-    "wood",
-    --"concrete", -- not enough super heavy concrete sounds
-}
-
-local function getMaterialForEnt( ent )
-    local cached = ent.tension_CachedSoundMaterial
-    if cached then return cached end
-
-    local stringToCheck = ent:GetMaterial()
-
-    if stringToCheck == "" then
-        local entsObj = ent:GetPhysicsObject()
-        if IsValid( entsObj ) then
-            stringToCheck = entsObj:GetMaterial()
-
-        end
-    end
-
-    local loweredStr = string_lower( stringToCheck )
-    local theMat = "generic"
-
-    for _, currMat in ipairs( potentialMaterials ) do
-        if string_find( loweredStr, currMat ) then
-            theMat = currMat
-            break
-
-        end
-    end
-
-    ent.tension_CachedSoundMaterial = theMat
-
-    timer.Simple( 5, function()
-        if not IsValid( ent ) then return end
-        ent.tension_CachedSoundMaterial = nil
-
-    end )
-end
-
 
 local function sparkEffect( sparkPos, scale )
     local sparks = EffectData()
@@ -218,6 +253,8 @@ end
 function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
     local ent1Mat = getMaterialForEnt( ent1 )
     local ent2Mat = getMaterialForEnt( ent2 )
+    if not ( ent1Mat and ent2Mat ) then return end
+
     if ent1Mat == "generic" and ent2Mat == "generic" then
         local sparkScale = significance / math.random( 30000, 100000 )
         if sparkScale > 0.1 then
@@ -251,17 +288,21 @@ function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
     end
 end
 
-local function playAppropriateSound( ent1, ent2, sounds, stress )
+local function playAppropriateSound( ent1, ent2, sounds, stress, matFallback )
 
-    local mat = getMaterialForEnt( ent1 )
+    local mat = getMaterialForEnt( ent1 ) or matFallback
 
     local bestDat = getAppropriateSoundDat( sounds, stress, mat )
     if not bestDat then return end
 
-    playSoundDat( ent1, bestDat )
-    if not IsValid( ent2 ) then return bestDat end
+    if IsValid( ent1 ) then
+        playSoundDat( ent1, bestDat )
 
-    playSoundDat( ent2, bestDat )
+    end
+    if IsValid( ent2 ) then
+        playSoundDat( ent2, bestDat )
+
+    end
     return bestDat
 
 end
@@ -701,8 +742,8 @@ TENSION_TBL.snapSounds = {
     },
 }
 
-function TENSION_TBL.playSnapSound( ent1, ent2, stress )
-    playAppropriateSound( ent1, ent2, TENSION_TBL.snapSounds, stress )
+function TENSION_TBL.playSnapSound( ent1, ent2, stress, matFallback )
+    playAppropriateSound( ent1, ent2, TENSION_TBL.snapSounds, stress, matFallback )
 
 end
 
