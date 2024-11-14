@@ -73,6 +73,8 @@ local function getMaterialForEnt( ent )
     end )
 end
 
+TENSION_TBL.getMaterialForEnt = getMaterialForEnt
+
 local function getConstraintSignificance( const )
     local keys = const:GetKeyValues()
     local strength = math.max( keys.forcelimit, keys.torquelimit )
@@ -124,17 +126,21 @@ local scaleAlwaysFreeze = 50
 local function reallyLagginHook( ent, lagScale ) -- freezes stuff thats landed
     if lagScale and math_random( lagScale, 100 ) < scaleAlwaysFreeze then return end -- only freeze sometimes if its not alot of lag
 
+    local nextCheck = ent.tension_nextFreezeCheck or 0
+    if nextCheck > CurTime() then return end -- dont spam these too much
+
     local entsObj = ent:GetPhysicsObject()
     if not IsValid( entsObj ) then return end
     if not entsObj:IsMotionEnabled() then hook.Remove( "tension_onreallylaggin", ent ) return end
 
     local size = ent:GetModelRadius()
-    local speedToFreeze = 5
+    local addedSpeed = lagScale / 200
+    local speedToFreeze = 5 + addedSpeed
     if size > 100 then
-        speedToFreeze = 2
+        speedToFreeze = 2 + addedSpeed
 
     elseif size > 1000 then -- they'll really notice if this one is freezing, better be worth it
-        speedToFreeze = 1
+        speedToFreeze = 1 + addedSpeed
 
     end
     if entsObj:GetVelocity():Length() > speedToFreeze then return end
@@ -148,7 +154,13 @@ local function reallyLagginHook( ent, lagScale ) -- freezes stuff thats landed
         start = nearestToGround,
         endpos = nearestToGround + findGroundOffset,
         mask = MASK_SOLID,
-        filter = ent,
+        filter = function( hit )
+            if hit:IsWorld() then return true end
+            if not IsValid( hit ) then return end
+            local hitsObj = hit:GetPhysicsObject()
+            if IsValid( hitsObj ) and not hitsObj:IsMotionEnabled() then return true end
+
+        end,
     }
     local result = util.TraceLine( trStruc )
 
@@ -169,6 +181,9 @@ local function reallyLagginHook( ent, lagScale ) -- freezes stuff thats landed
         entsObj:EnableMotion( false )
         hook.Remove( "tension_onreallylaggin", ent )
 
+    else
+        ent.tension_nextFreezeCheck = CurTime() + math.Rand( 0.01, 0.1 )
+
     end
 end
 
@@ -180,13 +195,16 @@ local function HandleSNAP( const )
     local significance, ent1, ent2 = getConstraintSignificance( const )
     if significance > 15000 then
         if not ent1.tensionFallInfo then
-            for _, ent in pairs( constraint.GetAllConstrainedEntities( ent1 ) ) do
+            local allConstrainedEnts = constraint.GetAllConstrainedEntities( ent1 )
+            for _, ent in pairs( allConstrainedEnts ) do
                 TENSION_TBL.bigFallEffects( ent, ent:GetPhysicsObject() )
 
             end
         end
+
         if not ent2.tensionFallInfo then
-            for _, ent in pairs( constraint.GetAllConstrainedEntities( ent2 ) ) do
+            local allConstrainedEnts = constraint.GetAllConstrainedEntities( ent2 )
+            for _, ent in pairs( allConstrainedEnts ) do
                 TENSION_TBL.bigFallEffects( ent, ent:GetPhysicsObject() )
 
             end
@@ -232,10 +250,12 @@ local function HandleSNAP( const )
         TENSION_TBL.playSnapEffects( leastMass, mostMass, significance )
 
         if IsValid( ent1 ) then
+            TENSION_TBL.tryInternalEcho( ent1 )
             hook.Add( "tension_onreallylaggin", ent1, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
 
         end
         if IsValid( ent2 ) then
+            TENSION_TBL.tryInternalEcho( ent2 )
             hook.Add( "tension_onreallylaggin", ent2, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
 
         end
@@ -304,7 +324,7 @@ local function snapGibsMetal( sparkPos, ent, scale )
     local gibEff = EffectData()
     gibEff:SetOrigin( sparkPos )
     gibEff:SetMagnitude( math.ceil( 2 * scale ) )
-    gibEff:SetScale( math.ceil( 0.5 * scale ) )
+    gibEff:SetScale( math.ceil( 1 * scale ) )
     gibEff:SetEntity( ent )
     util.Effect( "eff_tension_metalgibs", gibEff )
 
@@ -314,7 +334,7 @@ local function snapGibsWood( sparkPos, ent, scale )
     local gibEff = EffectData()
     gibEff:SetOrigin( sparkPos )
     gibEff:SetMagnitude( math.ceil( 2 * scale ) )
-    gibEff:SetScale( math.ceil( 0.5 * scale ) )
+    gibEff:SetScale( math.ceil( 1 * scale ) )
     gibEff:SetEntity( ent )
     util.Effect( "eff_tension_woodgibs", gibEff )
 
@@ -579,7 +599,12 @@ TENSION_TBL.stressSounds = {
 function TENSION_TBL.playStressSound( ent1, ent2, stressDiff )
     playAppropriateSound( ent1, ent2, TENSION_TBL.stressSounds, stressDiff )
 
+    local oldInternalEchoTolerance = ent1.tension_oldInternalEchoTolerance or 0
+    if stressDiff < oldInternalEchoTolerance then -- makes sure this only really happens when the thing either just spawned, or is collapsing
+        ent1.tension_oldInternalEchoTolerance = math.max( oldInternalEchoTolerance + stressDiff / 4, stressDiff / 2 )
+        TENSION_TBL.tryInternalEcho( ent1, stressDiff )
 
+    end
 end
 
 TENSION_TBL.snapSounds = {
@@ -836,7 +861,6 @@ local nearHitSounds = {
 }
 
 local dustFindOffset = Vector( 0, 0, -16000 )
-local down = Vector( 0, 0, -1 )
 
 function TENSION_TBL.bigFallEffects( ent, obj )
     if ent.tensionFallInfo then return end
@@ -901,7 +925,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             ent:EmitSound( path, lvl, pit, 0.5, CHAN_STATIC, 0, 0, filter )
 
-            TENSION_TBL.playStressSound( ent, nil, ( speed + obj:GetMass() ) * 20 )
+            TENSION_TBL.tryInternalEcho( ent, ( speed + obj:GetMass() ) * 20 )
 
         elseif tensionFallInfo.decreasesInARow >= 1 or currLengSqr < 25^2 then
             local mass = obj:GetMass()
@@ -935,7 +959,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
             local bestSpeed = math.sqrt( bestSpeedSqr )
 
             local speedForScale = bestSpeed - 500
-            local scale = 3 -- base of 3
+            local scale = 5 -- base of 5
             scale = scale + ( speedForScale / 200 )
 
             local dust = EffectData()
@@ -945,7 +969,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
             util.Effect( "eff_tension_dustpuff", dust )
 
             local passMass = mass > math_random( 1000, 5000 )
-            if scale <= math_random( 2, 15 ) or not passVolume or not passMass then return end 
+            if scale <= math_random( 2, 15 ) or not passVolume or not passMass then return end
 
             if TENSION_TBL.doBigFallAmbiance < CurTime() then -- dont do the ambiance with just 1 thing....
                 TENSION_TBL.doBigFallAmbiance = CurTime() + 0.5
