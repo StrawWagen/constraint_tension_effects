@@ -8,6 +8,13 @@ cvars.AddChangeCallback( "tension_sv_enabled", function( _, _, new )
 
 end )
 
+local autoFreezeVar = CreateConVar( "tension_sv_autofreeze", 1, FCVAR_ARCHIVE, "Automatically freeze props that came from snapped constraints, when the server's laggin." )
+local autoFreeze = autoFreezeVar:GetBool()
+cvars.AddChangeCallback( "tension_sv_autofreeze", function( _, _, new )
+    autoFreeze = tobool( new )
+
+end )
+
 local shakeEnabledVar = CreateConVar( "tension_sv_screenshake_enabled", 1, FCVAR_ARCHIVE, "Enable/disable tension screenshake." )
 local shakeEnabled = shakeEnabledVar:GetBool()
 cvars.AddChangeCallback( "tension_screenshake_enabled", function( _, _, new )
@@ -111,6 +118,61 @@ local function getConstraintSignificance( const )
 
 end
 
+local downFar = Vector( 0, 0, -64000 )
+local down = Vector( 0, 0, -1 )
+local scaleAlwaysFreeze = 50
+local function reallyLagginHook( ent, lagScale ) -- freezes stuff thats landed
+    if lagScale and math_random( lagScale, 100 ) < scaleAlwaysFreeze then return end -- only freeze sometimes if its not alot of lag
+
+    local entsObj = ent:GetPhysicsObject()
+    if not IsValid( entsObj ) then return end
+    if not entsObj:IsMotionEnabled() then hook.Remove( "tension_onreallylaggin", ent ) return end
+
+    local size = ent:GetModelRadius()
+    local speedToFreeze = 5
+    if size > 100 then
+        speedToFreeze = 2
+
+    elseif size > 1000 then -- they'll really notice if this one is freezing, better be worth it
+        speedToFreeze = 1
+
+    end
+    if entsObj:GetVelocity():Length() > speedToFreeze then return end
+
+    local nearestToGround = ent:NearestPoint( ent:WorldSpaceCenter() + downFar )
+    local findGroundOffset = down * math.Clamp( size / 100, 5, 100 )
+
+    local doFreeze
+
+    local trStruc = {
+        start = nearestToGround,
+        endpos = nearestToGround + findGroundOffset,
+        mask = MASK_SOLID,
+        filter = ent,
+    }
+    local result = util.TraceLine( trStruc )
+
+    if not result.Hit then return end
+
+    local hitEnt = result.Entity
+    if IsValid( hitEnt ) then
+        local hitsObj = hitEnt:GetPhysicsObject()
+        if IsValid( hitsObj ) and not hitsObj:IsMotionEnabled() then
+            doFreeze = true
+
+        end
+    elseif result.HitWorld then
+        doFreeze = true
+
+    end
+    if doFreeze then
+        entsObj:EnableMotion( false )
+        hook.Remove( "tension_onreallylaggin", ent )
+
+    end
+end
+
+
 local function HandleSNAP( const )
     TENSION_TBL.significantConstraints[const] = nil
     if not enabled then return end
@@ -168,6 +230,9 @@ local function HandleSNAP( const )
 
         TENSION_TBL.playSnapSound( leastMass, mostMass, significance, matFallback )
         TENSION_TBL.playSnapEffects( leastMass, mostMass, significance )
+
+        hook.Add( "tension_onreallylaggin", ent1, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
+        hook.Add( "tension_onreallylaggin", ent2, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
 
     end )
 end
@@ -966,6 +1031,7 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( ent )
 end )
 
 local nextThink = 0
+local nextWhine = 0
 
 hook.Add( "Think", "tension_stresssounds", function()
     local cur = CurTime()
@@ -975,6 +1041,18 @@ hook.Add( "Think", "tension_stresssounds", function()
         nextThink = cur + 1
         return
 
+    end
+
+    if autoFreeze then
+        local lagScale = physenv.GetLastSimulationTime() * 1000
+        if lagScale > 10 then
+            hook.Run( "tension_onreallylaggin", lagScale )
+            if nextWhine < cur then
+                nextWhine = cur + 5
+                print( "TENSION; Freezing some select props to prevent session lock-up." )
+
+            end
+        end
     end
     for _, data in pairs( TENSION_TBL.significantConstraints ) do
 
