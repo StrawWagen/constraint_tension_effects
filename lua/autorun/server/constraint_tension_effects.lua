@@ -1074,7 +1074,7 @@ hook.Add( "Think", "tension_stresssounds", function()
 
     if autoFreeze then
         local lagScale = physenv.GetLastSimulationTime() * 1000
-        if lagScale > 10 then
+        if lagScale > 5 then
             hook.Run( "tension_onreallylaggin", lagScale )
             if nextWhine < cur then
                 nextWhine = cur + 5
