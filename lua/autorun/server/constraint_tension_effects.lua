@@ -231,9 +231,14 @@ local function HandleSNAP( const )
         TENSION_TBL.playSnapSound( leastMass, mostMass, significance, matFallback )
         TENSION_TBL.playSnapEffects( leastMass, mostMass, significance )
 
-        hook.Add( "tension_onreallylaggin", ent1, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
-        hook.Add( "tension_onreallylaggin", ent2, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
+        if IsValid( ent1 ) then
+            hook.Add( "tension_onreallylaggin", ent1, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
 
+        end
+        if IsValid( ent2 ) then
+            hook.Add( "tension_onreallylaggin", ent2, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
+
+        end
     end )
 end
 
