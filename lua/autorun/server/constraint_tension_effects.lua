@@ -1041,12 +1041,16 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( ent )
 
     timer.Simple( 0, function()
         if not IsValid( ent ) then return end
+        local significance, ent1, ent2 = getConstraintSignificance( ent )
+
+        if ent1 == ent2 then return end -- ragdoll welded to itself?
+
         ent:CallOnRemove( "tension_makenoise", function( removed )
             HandleSNAP( removed )
 
         end )
-        local significance, ent1, ent2 = getConstraintSignificance( ent )
-        if significance <= math_random( 250, 1500 ) then return end
+
+        if significance <= math_random( 250, 1500 ) then return end -- not significant, this is random so that tension sounds arent overplayed
 
         TENSION_TBL.significantConstraints[ent] = {
             nextSnd = 0,
@@ -1087,6 +1091,7 @@ hook.Add( "Think", "tension_stresssounds", function()
 
         end
     end
+
     for _, data in pairs( TENSION_TBL.significantConstraints ) do
 
         local obj1 = data.obj2
@@ -1103,7 +1108,7 @@ hook.Add( "Think", "tension_stresssounds", function()
         local nextSnd = data.nextSnd
         if nextSnd > cur then continue end
 
-        if stressDiff > math_random( 25, 250 ) then
+        if stressDiff > math_random( 25, 250 ) then -- random so we dont overplay tension sounds
 
             local obj1Mass = obj1:GetMass()
             local obj2Mass = obj2:GetMass()
