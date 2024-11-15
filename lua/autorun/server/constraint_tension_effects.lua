@@ -1081,7 +1081,7 @@ hook.Add( "Think", "tension_stresssounds", function()
             hook.Run( "tension_onreallylaggin", lagScale )
 
         end
-        if lagScale > 25 and nextWhine < cur and wasSomethingWorthFreezing then
+        if wasSomethingWorthFreezing and lagScale > 25 and nextWhine < cur then
             nextWhine = cur + 5
             print( "TENSION; Freezing some select props to prevent session lock-up." )
 
