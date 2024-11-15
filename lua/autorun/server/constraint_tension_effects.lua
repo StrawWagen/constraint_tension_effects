@@ -32,6 +32,8 @@ local string_lower = string.lower
 local string_find = string.find
 local math_random = math.random
 
+local wasSomethingWorthFreezing
+
 local potentialMaterials = {
     "wood",
     --"concrete", -- not enough super heavy concrete sounds
@@ -178,6 +180,7 @@ local function reallyLagginHook( ent, lagScale ) -- freezes stuff thats landed
 
     end
     if doFreeze then
+        wasSomethingWorthFreezing = true
         entsObj:EnableMotion( false )
         hook.Remove( "tension_onreallylaggin", ent )
 
@@ -1076,11 +1079,12 @@ hook.Add( "Think", "tension_stresssounds", function()
         local lagScale = physenv.GetLastSimulationTime() * 1000
         if lagScale > 5 then
             hook.Run( "tension_onreallylaggin", lagScale )
-            if nextWhine < cur then
-                nextWhine = cur + 5
-                print( "TENSION; Freezing some select props to prevent session lock-up." )
 
-            end
+        end
+        if lagScale > 25 and nextWhine < cur and wasSomethingWorthFreezing then
+            nextWhine = cur + 5
+            print( "TENSION; Freezing some select props to prevent session lock-up." )
+
         end
     end
     for _, data in pairs( TENSION_TBL.significantConstraints ) do
