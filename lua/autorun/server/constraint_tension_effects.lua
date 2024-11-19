@@ -1,10 +1,19 @@
 
+AddCSLuaFile( "autorun/client/cl_constraint_tension_effects.lua" )
+
 TENSION_TBL = TENSION_TBL or {}
 
 local enabledVar = CreateConVar( "tension_sv_enabled", 1, FCVAR_ARCHIVE, "Enable/disable tension." )
 local enabled = enabledVar:GetBool()
 cvars.AddChangeCallback( "tension_sv_enabled", function( _, _, new )
     enabled = tobool( new )
+
+end )
+
+local adminOnlyVar = CreateConVar( "tension_sv_adminonly", 1, FCVAR_ARCHIVE, "Make tension only work on admin owned props, REQUIRES CPPI" )
+local adminOnly = adminOnlyVar:GetBool()
+cvars.AddChangeCallback( "tension_sv_enabled", function( _, _, new )
+    adminOnly = tobool( new )
 
 end )
 
@@ -31,6 +40,7 @@ local IsValid = IsValid
 local string_lower = string.lower
 local string_find = string.find
 local math_random = math.random
+local math_Rand = math.Rand
 
 local wasSomethingWorthFreezing
 
@@ -185,7 +195,7 @@ local function reallyLagginHook( ent, lagScale ) -- freezes stuff thats landed
         hook.Remove( "tension_onreallylaggin", ent )
 
     else
-        ent.tension_nextFreezeCheck = CurTime() + math.Rand( 0.01, 0.1 )
+        ent.tension_nextFreezeCheck = CurTime() + math_Rand( 0.01, 0.1 )
 
     end
 end
@@ -284,6 +294,69 @@ local function getAppropriateSoundDat( sounds, stress, mat )
 
 end
 
+
+util.AddNetworkString( "tension_send_clientashake" )
+
+local function SendShake( pos, amp, freq, dur, radius, airshake, filter )
+    if not filter then
+        filter = RecipientFilter()
+        if radius > 10000 then
+            filter:AddAllPlayers() -- just.... add all players
+
+        elseif radius > 1000 then
+            local radiusSqr = radius^2
+            for _, ply in player.Iterator() do
+                if ply:GetPos():DistToSqr( pos ) < radiusSqr then
+                    filter:AddPlayer( ply )
+
+                end
+            end
+        else
+            filter:AddPAS( pos ) -- use this if radius is small, shake should go thru walls on big radiuses
+
+        end
+    end
+    net.Start( "tension_send_clientashake" )
+        net.WriteVector( pos )
+        net.WriteFloat( amp )
+        net.WriteFloat( freq )
+        net.WriteFloat( dur )
+        net.WriteInt( radius, 32 )
+        net.WriteBool( airshake or false )
+    net.Send( filter )
+
+end
+
+
+local bitCount = 10
+
+util.AddNetworkString( "tension_send_clientasound" )
+
+local function SendSound( ent, path, level, pitch, vol, channel, flags, dsp, filter )
+    if not filter then
+        filter = RecipientFilter()
+        if level > 125 then -- loud, rare sound, supposed to be mapwide, PAS will probably fail it.
+            filter:AddAllPlayers()
+
+        else
+            filter:AddPAS( ent:GetPos() )
+
+        end
+    end
+    net.Start( "tension_send_clientasound" )
+        net.WriteEntity( ent )
+        net.WriteString( path )
+        net.WriteInt( level or 75, bitCount )
+        net.WriteFloat( pitch or 100 )
+        net.WriteFloat( vol or 1 )
+        net.WriteInt( channel or CHAN_AUTO, bitCount )
+        net.WriteInt( flags or SND_NOFLAGS, bitCount )
+        net.WriteInt( dsp or 0, bitCount )
+    net.Send( filter )
+
+end
+
+
 local function playSoundDat( ent, dat )
     if not IsValid( ent ) then return end -- world
     local filter
@@ -293,9 +366,9 @@ local function playSoundDat( ent, dat )
 
     end
     local paths = dat.paths
-    ent:EmitSound( paths[math_random( 1, #paths )], dat.lvl, math_random( dat.minpitch, dat.maxpitch ), 1, dat.chan, 0, 0, filter )
+    SendSound( ent, paths[math_random( 1, #paths )], dat.lvl, math_random( dat.minpitch, dat.maxpitch ), 1, dat.chan, 0, 0, filter )
     if dat.twicedoublepitch then
-        ent:EmitSound( paths[math_random( 1, #paths )], dat.lvl, math_random( dat.minpitch, dat.maxpitch ) * 2, 1, dat.chan, 0, 0, filter )
+        SendSound( ent, paths[math_random( 1, #paths )], dat.lvl, math_random( dat.minpitch, dat.maxpitch ) * 2, 1, dat.chan, 0, 0, filter )
 
     end
 
@@ -306,7 +379,7 @@ local function playSoundDat( ent, dat )
             shake.amp = shake.amp / 10
 
         end
-        util.ScreenShake( ent:GetPos(), shake.amp, 20, shake.amp / 10, shake.rad, true )
+        SendShake( ent:GetPos(), shake.amp, 20, shake.amp / 5, shake.rad, false )
 
     end
 end
@@ -349,7 +422,7 @@ function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
     if not ( ent1Mat and ent2Mat ) then return end
 
     if ent1Mat == "generic" and ent2Mat == "generic" then
-        local sparkScale = significance / math.random( 30000, 100000 )
+        local sparkScale = significance / math_random( 30000, 100000 )
         if sparkScale > 0.1 then
             local ent1sCenter = ent1:WorldSpaceCenter()
             local ent2sCenter = ent2:WorldSpaceCenter()
@@ -365,7 +438,7 @@ function TENSION_TBL.playSnapEffects( ent1, ent2, significance )
             snapGibsMetal( ent2sNearest, ent2, gibScale )
         end
     elseif ent1Mat == "wood" and ent2Mat == "wood" then
-        local splinterScale = significance / math.random( 500, 7500 )
+        local splinterScale = significance / math_random( 500, 7500 )
         if splinterScale > 0.05 then
             local ent1sCenter = ent1:WorldSpaceCenter()
             local ent2sCenter = ent2:WorldSpaceCenter()
@@ -603,7 +676,8 @@ function TENSION_TBL.playStressSound( ent1, ent2, stressDiff )
     playAppropriateSound( ent1, ent2, TENSION_TBL.stressSounds, stressDiff )
 
     local oldInternalEchoTolerance = ent1.tension_oldInternalEchoTolerance or 0
-    if stressDiff < oldInternalEchoTolerance then -- makes sure this only really happens when the thing either just spawned, or is collapsing
+    local nextEcho = ent1.tension_NextInternalEcho or 0
+    if stressDiff < oldInternalEchoTolerance and nextEcho < CurTime() then -- makes sure this only really happens when the thing either just spawned, or is collapsing
         ent1.tension_oldInternalEchoTolerance = math.max( oldInternalEchoTolerance + stressDiff / 4, stressDiff / 2 )
         TENSION_TBL.tryInternalEcho( ent1, stressDiff )
 
@@ -821,7 +895,7 @@ TENSION_TBL.snapSounds = {
                 minpitch = 40,
                 maxpitch = 60,
                 twicedoublepitch = true,
-                shake = { rad = 4000, amp = 40 }
+                shake = { rad = 4000, amp = 15 }
             },
             wood = {
                 paths = {
@@ -834,7 +908,7 @@ TENSION_TBL.snapSounds = {
                 minpitch = 5,
                 maxpitch = 15,
                 twicedoublepitch = true,
-                shake = { rad = 4000, amp = 40 }
+                shake = { rad = 4000, amp = 15 }
             },
         }
     },
@@ -906,11 +980,11 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             end
         end
-        if not tensionFallInfo.doneFallWoosh and currLengSqr > 750^2 and tensionFallInfo.increasesInARow > math_random( 15, 35 ) and obj:GetMass() > math_random( 5000, 15000 ) then
+        if not tensionFallInfo.doneFallWoosh and currLengSqr > 550^2 and tensionFallInfo.increasesInARow > math_random( 15, 35 ) and obj:GetMass() > math_random( 5000, 15000 ) then
             tensionFallInfo.doneFallWoosh = true
 
             local speed = math.sqrt( currLengSqr )
-            local scale = math.abs( speed - 750 )
+            local scale = math.abs( speed - 550 )
             scale = scale / 100
 
             local pit = 120
@@ -926,7 +1000,8 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             local path = wooshShounds[ math_random( 1, #wooshShounds ) ]
 
-            ent:EmitSound( path, lvl, pit, 0.5, CHAN_STATIC, 0, 0, filter )
+
+            SendSound( ent, path, lvl, pit, 0.5, CHAN_STATIC, 0, 0, filter )
 
             TENSION_TBL.tryInternalEcho( ent, ( speed + obj:GetMass() ) * 20 )
 
@@ -940,13 +1015,13 @@ function TENSION_TBL.bigFallEffects( ent, obj )
             -- give punch to bouncing debris
             if bestSpeedSqr > 1000^2 and mass > 5000 and passVolume and not tensionFallInfo.tension_BounceSoundDone then
                 tensionFallInfo.tension_BounceSoundDone = true
-                local nearHitPath = nearHitSounds[math.random( 1, #nearHitSounds )]
+                local nearHitPath = nearHitSounds[math_random( 1, #nearHitSounds )]
                 local speedComp = math.sqrt( bestSpeedSqr ) / 2000
-                local pit = math.random( 60, 70 )
+                local pit = math_random( 60, 70 )
                 pit = pit + -( mass / 2500 )
                 pit = pit + -speedComp
-                pit = math.Clamp( pit, math.random( 25, 35 ), 100 )
-                ent:EmitSound( nearHitPath, 88 + speedComp, pit, 1 )
+                pit = math.Clamp( pit, math_random( 25, 35 ), 100 )
+                SendSound( ent, nearHitPath, 88 + speedComp, pit, 1 )
 
             end
 
@@ -991,7 +1066,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
                 local filter = RecipientFilter()
                 filter:AddPVS( myPos )
 
-                ent:EmitSound( "ambient/levels/labs/teleport_postblast_thunder1.wav", lvl, pit, 0.5, CHAN_STATIC, 0, 0, filter )
+                SendSound( ent, "ambient/levels/labs/teleport_postblast_thunder1.wav", lvl, pit, 0.5, CHAN_STATIC, 0, 0, filter )
 
             end
 
@@ -1013,10 +1088,10 @@ function TENSION_TBL.bigFallEffects( ent, obj )
                 speedScale = math.Clamp( speedScale, 0, 1 )
 
                 if shakeEnabled then
-                    util.ScreenShake( ent:GetPos(), 2 * speedScale, 10, 12, 15000, true, echoFilter )
+                    SendShake( ent:GetPos(), speedScale, 10 * speedScale, 12, 15000, true, echoFilter )
 
                 end
-                ent:EmitSound( "ambient/explosions/explode_9.wav", 150, math.random( 15, 30 ), speedScale, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
+                SendSound( ent, "ambient/explosions/explode_9.wav", 150, math_random( 15, 30 ), speedScale, CHAN_STATIC, 0, 131, echoFilter ) -- boooooom
 
             end
         end
@@ -1036,27 +1111,48 @@ local constraintClasses = {
 
 }
 
-hook.Add( "OnEntityCreated", "tension_findconstraints", function( ent )
-    if not constraintClasses[ ent:GetClass() ] then return end
+local ropeTypes = {
+    phys_lengthconstraint = true,
+    phys_pulleyconstraint = true,
+    phys_slideconstraint = true,
+
+}
+
+hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
+    if not constraintClasses[ constr:GetClass() ] then return end
 
     timer.Simple( 0, function()
-        if not IsValid( ent ) then return end
-        local significance, ent1, ent2 = getConstraintSignificance( ent )
+        if not IsValid( constr ) then return end
+        local significance, ent1, ent2 = getConstraintSignificance( constr )
+
+        if adminOnly and CPPI then
+            local owner = ent1:CPPIGetOwner()
+            if not IsValid( owner ) then
+                owner = ent2:CPPIGetOwner()
+
+            end
+            if not owner:IsAdmin() then return end
+
+        end
 
         if ent1 == ent2 then return end -- ragdoll welded to itself?
+        if ent1:IsNPC() or ent2:IsNPC() then return end -- vj base....
 
-        ent:CallOnRemove( "tension_makenoise", function( removed )
+        constr:CallOnRemove( "tension_makenoise", function( removed )
             HandleSNAP( removed )
 
         end )
 
         if significance <= math_random( 250, 1500 ) then return end -- not significant, this is random so that tension sounds arent overplayed
 
-        TENSION_TBL.significantConstraints[ent] = {
+        TENSION_TBL.significantConstraints[constr] = {
             nextSnd = 0,
+            nextThink = 0,
             lastStress = 0,
-            const = ent,
+            nextValidityCheck = 0,
+            const = constr,
             significance = significance,
+            rope = ropeTypes[constr],
             ent1 = ent1,
             ent2 = ent2,
             obj1 = ent1:GetPhysicsObject(),
@@ -1094,13 +1190,36 @@ hook.Add( "Think", "tension_stresssounds", function()
 
     for _, data in pairs( TENSION_TBL.significantConstraints ) do
 
+        if data.nextThink > cur then continue end
+
         local obj1 = data.obj2
         local obj2 = data.obj1
-        if not ( IsValid( obj1 ) and IsValid( obj2 ) ) then TENSION_TBL.significantConstraints[ data.const ] = nil continue end
+        if not ( IsValid( obj1 ) and IsValid( obj2 ) ) then
+            TENSION_TBL.significantConstraints[ data.const ] = nil
+            continue
+
+        end
+
+        if not obj1:IsMotionEnabled() and not obj2:IsMotionEnabled() then
+            data.nextThink = cur + math_Rand( 0.5, 1.5 )
+            continue
+
+        end
+
+        if data.nextValidityCheck < cur then
+            data.nextValidityCheck = math_random( 10, 45 )
+            if IsValid( data.ent1:GetParent() ) or IsValid( data.ent2:GetParent() ) then -- multi-parented without remove constraints checked...
+                TENSION_TBL.significantConstraints[ data.const ] = nil
+                continue
+
+            end
+        end
 
         local stressOf1 = obj1:GetStress()
         local stressOf2 = obj2:GetStress()
         local currStress = stressOf1 + stressOf2
+
+        --debugoverlay.Text( data.ent1:WorldSpaceCenter(), tostring( currStress ), 0.1, false )
 
         local stressDiff = math.abs( currStress - data.lastStress )
         data.lastStress = currStress
@@ -1134,10 +1253,16 @@ hook.Add( "Think", "tension_stresssounds", function()
 
             end
 
-            --debugoverlay.Text( mostMass:WorldSpaceCenter(), tostring( stressDiff ), 5, false )
-
             TENSION_TBL.playStressSound( leastMass, mostMass, stressDiff ) -- play using least stressed so material picker doesnt pick generic sounds on wood structures
 
+        else
+            if currStress < 10 then
+                data.nextThink = cur + math_Rand( 0.5, 1.5 )
+
+            else
+                data.nextThink = cur + math_Rand( 0.1, 0.25 )
+
+            end
         end
     end
 end )

@@ -1,8 +1,17 @@
 
 local math = math
 
+local enabledVar = GetConVar( "tension_cl_enabled" )
+local enabled = enabledVar:GetBool()
+cvars.AddChangeCallback( "tension_cl_enabled", function( _, _, new )
+    enabled = tobool( new )
+
+end, "updatedustpuff" )
+
 local grav = Vector( 0, 0, -1 )
 function EFFECT:Init( data )
+    if not enabled then return end
+
     local vOffset = data:GetOrigin()
     self.Normal = data:GetNormal()
     self.Position = vOffset
@@ -23,10 +32,12 @@ function EFFECT:Init( data )
         cheap = true
         self.ParticleCount = self.Scale * 0.25
         particleScale = particleScale * 1.75
+        lifetime = lifetime / 6
 
     elseif fps <= 60 or math.random( 1, 100 ) < 30 then
         self.ParticleCount = self.Scale * 0.75
         particleScale = particleScale * 1.25
+        lifetime = lifetime / 4
 
     end
 

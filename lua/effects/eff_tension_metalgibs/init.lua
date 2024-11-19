@@ -1,4 +1,12 @@
 
+
+local enabledVar = GetConVar( "tension_cl_enabled" )
+local enabled = enabledVar:GetBool()
+cvars.AddChangeCallback( "tension_cl_enabled", function( _, _, new )
+    enabled = tobool( new )
+
+end, "updatemetalgibs" )
+
 local gibModels = {
     "models/props_debris/rebar001a_32.mdl",
     "models/props_debris/rebar001b_48.mdl",
@@ -62,6 +70,8 @@ local math = math
 local Color = Color
 
 function EFFECT:Init( data )
+    if not enabled then return end
+
     if not precachedGibMdls then
         precachedGibMdls = true
         for _, mdl in ipairs( gibModels ) do
