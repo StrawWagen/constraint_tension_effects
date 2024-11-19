@@ -1131,7 +1131,7 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
                 owner = ent2:CPPIGetOwner()
 
             end
-            if not owner:IsAdmin() then return end
+            if IsValid( owner ) and not owner:IsAdmin() then return end -- works on world props too
 
         end
 
