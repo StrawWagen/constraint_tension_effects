@@ -12,7 +12,7 @@ end )
 
 local adminOnlyVar = CreateConVar( "tension_sv_adminonly", 1, FCVAR_ARCHIVE, "Make tension only work on admin owned props, REQUIRES CPPI" )
 local adminOnly = adminOnlyVar:GetBool()
-cvars.AddChangeCallback( "tension_sv_enabled", function( _, _, new )
+cvars.AddChangeCallback( "tension_sv_adminonly", function( _, _, new )
     adminOnly = tobool( new )
 
 end )
@@ -70,6 +70,7 @@ local function getMaterialForEnt( ent )
 
     for _, currMat in ipairs( potentialMaterials ) do
         if string_find( loweredStr, currMat ) then
+            --print( loweredStr, currMat, ent:GetModel() )
             theMat = currMat
             break
 
