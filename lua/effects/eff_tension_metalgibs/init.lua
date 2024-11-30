@@ -92,8 +92,14 @@ function EFFECT:Init( data )
 
     local fps = 1 / FrameTime()
 
-    -- try and conserve fps a lil bit
-    if fps <= 30 or math.random( 1, 100 ) < 15 then
+    if fps <= 10 or fps <= math.random( 0, 15 ) then -- :skull:
+        return
+
+    elseif fps <= 15 then -- hell naw this guy is crashin
+        lifetime = lifetime / 10
+        self.GibCount = 1
+
+    elseif fps <= 30 or math.random( 1, 100 ) < 15 then -- try and conserve fps a lil bit
         lifetime = lifetime / 4
         self.GibCount = self.Scale * 0.25
 

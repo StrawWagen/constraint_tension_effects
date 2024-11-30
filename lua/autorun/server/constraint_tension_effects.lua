@@ -33,6 +33,7 @@ end )
 
 TENSION_TBL.significantConstraints = TENSION_TBL.significantConstraints or {}
 TENSION_TBL.nextGlobalEcho = 0
+TENSION_TBL.nextFallWoosh = 0
 TENSION_TBL.nextBigFallAmbiance = 0
 TENSION_TBL.doBigFallAmbiance = 0
 
@@ -91,7 +92,12 @@ TENSION_TBL.getMaterialForEnt = getMaterialForEnt
 local function getConstraintSignificance( const )
     local keys = const:GetKeyValues()
     local strength = math.max( keys.forcelimit, keys.torquelimit )
-    if strength == 0 then strength = math.huge end
+    local wasBreakable = true
+    if strength == 0 then
+        wasBreakable = false
+        strength = math.huge
+
+    end
 
     local ent1, ent2 = const:GetConstrainedEntities()
     local ent1sMass = 0
@@ -129,9 +135,92 @@ local function getConstraintSignificance( const )
     local significance = math.Clamp( massInvolved, 0, math.min( maxSignificance, strength ) )
 
     --print( significance, massInvolved, ent1, ent2 )
-    return significance, ent1, ent2
+    return significance, ent1, ent2, wasBreakable
 
 end
+
+function TENSION_TBL.handleContraptionDiameter( constr, data ) -- overcomplicated way to find a simple distance that represents the size of a contraption
+    local TENSION_TBL = TENSION_TBL
+    local significantConstraints = TENSION_TBL.significantConstraints
+    data = data or significantConstraints[constr]
+    if data.nextSizeCheck > CurTime() then return end
+
+    if not IsValid( data.ent1 ) then return end
+    if not IsValid( data.ent2 ) then return end
+
+    local pos1 = data.ent1:GetPos()
+    local pos2 = data.ent2:GetPos()
+
+    local toUpdate = {}
+
+    local furthestDistSqr = 0
+    local connectedEnts = constraint.GetAllConstrainedEntities( data.ent1 )
+    for _, ent in pairs( connectedEnts ) do
+        local entsPos = ent:GetPos()
+        local toPos1 = entsPos:DistToSqr( pos1 )
+        if toPos1 > furthestDistSqr then
+            pos2 = entsPos
+            furthestDistSqr = toPos1
+
+        else
+            local toPos2 = entsPos:DistToSqr( pos2 )
+            if toPos2 > furthestDistSqr then
+                pos1 = entsPos
+                furthestDistSqr = toPos2
+
+            end
+        end
+
+        local setupConstraints = ent.tension_Constraints
+        if setupConstraints then
+            for _, currConstr in ipairs( setupConstraints ) do
+                table.insert( toUpdate, currConstr )
+
+            end
+        end
+    end
+
+    local furthestDist = math.sqrt( furthestDistSqr )
+    local nextCheck = 1 -- not at all stable
+
+    local dataToUpdate = {}
+
+    for _, currConstr in ipairs( toUpdate ) do
+        local currData = significantConstraints[currConstr]
+        if currData then
+            table.insert( dataToUpdate, currData )
+            local lastSize = currData.contraptionDiameter or 0
+            local diff = furthestDist - lastSize
+            local currNextCheck = 0
+
+            if diff < -100 then -- structure BROKE, doesn't happen like ever, but maybe in the future
+                currNextCheck = math.huge -- this is max size EVER, not current size, sorry
+
+            elseif diff < 10 then -- stabilized
+                currNextCheck = 60
+
+            elseif diff < 100 then -- kinda stable
+                currNextCheck = 10
+
+            elseif diff < 500 then -- not stable
+                currNextCheck = 5
+
+            end
+            if currNextCheck > nextCheck then
+                nextCheck = currNextCheck
+
+            end
+        end
+    end
+
+    for _, currData in ipairs( dataToUpdate ) do
+        currData.nextSizeCheck = CurTime() + nextCheck
+        currData.contraptionDiameter = furthestDist
+
+    end
+end
+
+
 
 local downFar = Vector( 0, 0, -64000 )
 local down = Vector( 0, 0, -1 )
@@ -204,9 +293,10 @@ end
 
 local function HandleSNAP( const )
     TENSION_TBL.significantConstraints[const] = nil
+
     if not enabled then return end
 
-    local significance, ent1, ent2 = getConstraintSignificance( const )
+    local significance, ent1, ent2, wasBreakable = getConstraintSignificance( const )
     if significance > 15000 then
         if not ent1.tensionFallInfo then
             local allConstrainedEnts = constraint.GetAllConstrainedEntities( ent1 )
@@ -251,11 +341,17 @@ local function HandleSNAP( const )
     local matFallback = getMaterialForEnt( leastMass )
 
     timer.Simple( 0, function()
-        if oneHadHealth then
+        if not wasBreakable and IsValid( leastMass ) and IsValid( mostMass ) then -- constraint was REMOVED!
+            return
+
+        elseif oneHadHealth then
             local oneIsValid = IsValid( leastMass ) or IsValid( mostMass )
             if not oneIsValid then return end -- assume it was removed ( not like we can play sounds on NULL ents anyway )
 
         elseif not ( IsValid( leastMass ) and IsValid( mostMass ) ) then
+            return
+
+        elseif not obj1:IsMotionEnabled() and not obj2:IsMotionEnabled() then -- both are frozen, likely the constraint was undone
             return
 
         end
@@ -369,7 +465,8 @@ local function playSoundDat( ent, dat )
     local paths = dat.paths
     SendSound( ent, paths[math_random( 1, #paths )], dat.lvl, math_random( dat.minpitch, dat.maxpitch ), 1, dat.chan, 0, 0, filter )
     if dat.twicedoublepitch then
-        SendSound( ent, paths[math_random( 1, #paths )], dat.lvl, math_random( dat.minpitch, dat.maxpitch ) * 2, 1, dat.chan, 0, 0, filter )
+        local newLvl = dat.lvl * 0.95
+        SendSound( ent, paths[math_random( 1, #paths )], newLvl, math_random( dat.minpitch, dat.maxpitch ) * 2, 1, dat.chan, 0, 0, filter )
 
     end
 
@@ -490,10 +587,9 @@ TENSION_TBL.stressSounds = {
 
                 },
                 chan = CHAN_BODY,
-                lvl = 68,
-                minpitch = 90,
-                maxpitch = 110,
-                shake = { rad = 500, amp = 0.5 }
+                lvl = 64,
+                minpitch = 100,
+                maxpitch = 120,
             },
             wood = {
                 paths = {
@@ -514,7 +610,7 @@ TENSION_TBL.stressSounds = {
         }
     },
     {
-        stress = 500,
+        stress = 600,
         sounds = {
             generic = {
                 paths = {
@@ -701,8 +797,8 @@ TENSION_TBL.snapSounds = {
                     "ambient/materials/bump1.wav",
 
                 },
-                chan = CHAN_BODY,
-                lvl = 68,
+                chan = CHAN_STATIC,
+                lvl = 64,
                 minpitch = 110,
                 maxpitch = 160,
                 shake = { rad = 500, amp = 0.5 }
@@ -716,7 +812,7 @@ TENSION_TBL.snapSounds = {
                     "physics/wood/wood_plank_break4.wav",
 
                 },
-                chan = CHAN_BODY,
+                chan = CHAN_STATIC,
                 lvl = 80,
                 minpitch = 110,
                 maxpitch = 150,
@@ -739,7 +835,7 @@ TENSION_TBL.snapSounds = {
                     "ambient/materials/bump1.wav",
 
                 },
-                chan = CHAN_BODY,
+                chan = CHAN_STATIC,
                 lvl = 78,
                 minpitch = 95,
                 maxpitch = 110,
@@ -758,7 +854,7 @@ TENSION_TBL.snapSounds = {
                     "physics/wood/wood_crate_break2.wav",
 
                 },
-                chan = CHAN_BODY,
+                chan = CHAN_STATIC,
                 lvl = 82,
                 minpitch = 95,
                 maxpitch = 110,
@@ -778,7 +874,7 @@ TENSION_TBL.snapSounds = {
                     "ambient/materials/shipgroan2.wav",
 
                 },
-                chan = CHAN_BODY,
+                chan = CHAN_STATIC,
                 lvl = 84,
                 minpitch = 90,
                 maxpitch = 120,
@@ -791,7 +887,7 @@ TENSION_TBL.snapSounds = {
                     "physics/wood/wood_crate_break5.wav",
 
                 },
-                chan = CHAN_BODY,
+                chan = CHAN_STATIC,
                 lvl = 88,
                 minpitch = 90,
                 maxpitch = 120,
@@ -811,7 +907,7 @@ TENSION_TBL.snapSounds = {
                     "ambient/materials/shipgroan2.wav",
 
                 },
-                chan = CHAN_BODY,
+                chan = CHAN_STATIC,
                 lvl = 88,
                 minpitch = 80,
                 maxpitch = 150,
@@ -892,7 +988,7 @@ TENSION_TBL.snapSounds = {
                 },
                 chan = CHAN_STATIC,
                 global = true,
-                lvl = 100,
+                lvl = 105,
                 minpitch = 40,
                 maxpitch = 60,
                 twicedoublepitch = true,
@@ -905,7 +1001,7 @@ TENSION_TBL.snapSounds = {
                 },
                 chan = CHAN_STATIC,
                 global = true,
-                lvl = 100,
+                lvl = 105,
                 minpitch = 5,
                 maxpitch = 15,
                 twicedoublepitch = true,
@@ -981,7 +1077,8 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             end
         end
-        if not tensionFallInfo.doneFallWoosh and currLengSqr > 550^2 and tensionFallInfo.increasesInARow > math_random( 15, 35 ) and obj:GetMass() > math_random( 5000, 15000 ) then
+        if TENSION_TBL.nextFallWoosh < CurTime() and not tensionFallInfo.doneFallWoosh and currLengSqr > 550^2 and tensionFallInfo.increasesInARow > math_random( 15, 35 ) and obj:GetMass() > math_random( 5000, 15000 ) then
+            TENSION_TBL.nextFallWoosh = CurTime() + 0.1
             tensionFallInfo.doneFallWoosh = true
 
             local speed = math.sqrt( currLengSqr )
@@ -1055,7 +1152,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             elseif TENSION_TBL.nextBigFallAmbiance < CurTime() then
                 TENSION_TBL.doBigFallAmbiance = CurTime() + 0.5
-                TENSION_TBL.nextBigFallAmbiance = CurTime() + 0.16
+                TENSION_TBL.nextBigFallAmbiance = CurTime() + 0.18
                 local pit = 50
                 local lvl = 75
                 lvl = lvl + scale
@@ -1073,7 +1170,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
 
             -- instant stop, fell fast, and we're really heavy, ECHO!
             if TENSION_TBL.nextGlobalEcho < CurTime() and tensionFallInfo.decreasesInARow <= 11 and bestSpeed > 500 and mass >= 5000 then
-                TENSION_TBL.nextGlobalEcho = CurTime() + 0.25
+                TENSION_TBL.nextGlobalEcho = CurTime() + 0.35
                 local echoFilter = RecipientFilter()
                 local farEnoughPlys = {}
                 local dist = 3500
@@ -1146,7 +1243,7 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
 
         if significance <= math_random( 250, 1500 ) then return end -- not significant, this is random so that tension sounds arent overplayed
 
-        TENSION_TBL.significantConstraints[constr] = {
+        local data = {
             nextSnd = 0,
             nextThink = 0,
             lastStress = 0,
@@ -1154,12 +1251,36 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
             const = constr,
             significance = significance,
             rope = ropeTypes[constr],
+            contraptionDiameter = nil,
+            nextSizeCheck = 0,
             ent1 = ent1,
             ent2 = ent2,
             obj1 = ent1:GetPhysicsObject(),
             obj2 = ent2:GetPhysicsObject(),
 
         }
+        TENSION_TBL.significantConstraints[constr] = data
+
+        if not ent1.tension_Constraints then
+            ent1.tension_Constraints = { constr }
+
+        else
+            table.insert( ent1.tension_Constraints, constr )
+
+        end
+        if not ent2.tension_Constraints then
+            ent2.tension_Constraints = { constr }
+
+        else
+            table.insert( ent2.tension_Constraints, constr )
+
+        end
+
+        timer.Simple( math.random( 1, 8 ), function()
+            if not IsValid( constr ) then return end
+            TENSION_TBL.handleContraptionDiameter( constr, data ) -- another way we dont play big sounds on small stuff
+
+        end )
     end )
 end )
 
@@ -1242,6 +1363,10 @@ hook.Add( "Think", "tension_stresssounds", function()
 
             end
             data.nextSnd = cur + nextSndAdd
+
+            -- do this after the sound interval setting
+            local contraptionSize = data.contraptionDiameter or math.huge -- another tiny stuff check!
+            stressDiff = math.Clamp( stressDiff, 0, contraptionSize * math.Rand( 4, 6 ) ) -- makes it so small contraptions dont play mega sounds
 
             local mostMass
             local leastMass

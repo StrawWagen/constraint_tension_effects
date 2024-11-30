@@ -27,8 +27,10 @@ function EFFECT:Init( data )
     local particleScale = 1
     local cheap
 
-    -- try and conserve fps a lil bit
-    if fps <= 30 or math.random( 1, 100 ) < 15 then
+    if fps <= 10 then -- this player is suffering.... no dust
+        return
+
+    elseif fps <= 30 or math.random( 1, 100 ) < 15 then -- try and conserve fps a lil bit
         cheap = true
         self.ParticleCount = self.Scale * 0.25
         particleScale = particleScale * 1.75

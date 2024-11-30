@@ -23,7 +23,7 @@ local IsValid = IsValid
 local LocalPlayer = LocalPlayer
 local MOVETYPE_NOCLIP = MOVETYPE_NOCLIP
 
-local goodDelayMagicNum = 50000
+local goodDelayMagicNum = 60000
 
 local function getTimeDelayToFeel( ref )
     local dist = ref:Distance( LocalPlayer():GetPos() )
@@ -90,9 +90,11 @@ net.Receive( "tension_send_clientasound", function()
     local dsp = net.ReadInt( bitCount )
 
     vol = vol * volumeMul
-    timer.Simple( getTimeDelayToFeel( ent:GetPos() ), function()
+    local delay, dist = getTimeDelayToFeel( ent:GetPos() )
+    timer.Simple( delay, function()
         if not IsValid( ent ) then return end
-        ent:EmitSound( path, level, pitch, vol, channel, flags, dsp )
+        local newpitch = math.Clamp( pitch + -dist / 1000, 1, 200 ) -- far away stuff is lower pitch wow
+        ent:EmitSound( path, level, newpitch, vol, channel, flags, dsp )
 
     end )
 end )
