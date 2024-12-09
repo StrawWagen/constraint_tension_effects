@@ -45,6 +45,7 @@ net.Receive( "tension_send_clientashake", function()
     local airshake = net.ReadBool()
     if not airshake then
         local ply = LocalPlayer()
+        if not IsValid( ply ) then return end -- not loaded
         local moveType = ply:GetMoveType()
         if moveType == MOVETYPE_NOCLIP and not ply:InVehicle() then
             amp = amp / 8

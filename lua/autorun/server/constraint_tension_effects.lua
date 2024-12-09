@@ -145,6 +145,8 @@ function TENSION_TBL.handleContraptionDiameter( constr, data ) -- overcomplicate
     data = data or significantConstraints[constr]
     if data.nextSizeCheck > CurTime() then return end
 
+    if not enabled then return end
+
     if not IsValid( data.ent1 ) then return end
     if not IsValid( data.ent2 ) then return end
 
@@ -298,7 +300,7 @@ local function HandleSNAP( const )
 
     local significance, ent1, ent2, wasBreakable = getConstraintSignificance( const )
     if significance > 15000 then
-        if not ent1.tensionFallInfo then
+        if not ent1.tensionFallInfo then -- dont do this if any other SNAPs beat us to it
             local allConstrainedEnts = constraint.GetAllConstrainedEntities( ent1 )
             for _, ent in pairs( allConstrainedEnts ) do
                 TENSION_TBL.bigFallEffects( ent, ent:GetPhysicsObject() )
@@ -306,7 +308,7 @@ local function HandleSNAP( const )
             end
         end
 
-        if not ent2.tensionFallInfo then
+        if not ent2.tensionFallInfo then -- ditto
             local allConstrainedEnts = constraint.GetAllConstrainedEntities( ent2 )
             for _, ent in pairs( allConstrainedEnts ) do
                 TENSION_TBL.bigFallEffects( ent, ent:GetPhysicsObject() )
@@ -1223,9 +1225,9 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
         if not IsValid( constr ) then return end
         local significance, ent1, ent2 = getConstraintSignificance( constr )
 
-        if adminOnly and CPPI then
+        if adminOnly and CPPI and IsValid( ent1 ) then
             local owner = ent1:CPPIGetOwner()
-            if not IsValid( owner ) then
+            if not IsValid( owner ) and IsValid( ent2 ) then
                 owner = ent2:CPPIGetOwner()
 
             end
@@ -1235,6 +1237,8 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
 
         if ent1 == ent2 then return end -- ragdoll welded to itself?
         if ent1:IsNPC() or ent2:IsNPC() then return end -- vj base....
+
+        -- all good, now we setup the ent
 
         constr:CallOnRemove( "tension_makenoise", function( removed )
             HandleSNAP( removed )
