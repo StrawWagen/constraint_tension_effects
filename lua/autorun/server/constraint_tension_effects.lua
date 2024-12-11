@@ -10,9 +10,9 @@ cvars.AddChangeCallback( "tension_sv_enabled", function( _, _, new )
 
 end )
 
-local adminOnlyVar = CreateConVar( "tension_sv_adminonly", 1, FCVAR_ARCHIVE, "Make tension only work on admin owned props, REQUIRES CPPI" )
+local adminOnlyVar = CreateConVar( "tension_sv_adminsonly", 0, FCVAR_ARCHIVE, "Make tension only work on admin owned props, REQUIRES CPPI" )
 local adminOnly = adminOnlyVar:GetBool()
-cvars.AddChangeCallback( "tension_sv_adminonly", function( _, _, new )
+cvars.AddChangeCallback( "tension_sv_adminsonly", function( _, _, new )
     adminOnly = tobool( new )
 
 end )
