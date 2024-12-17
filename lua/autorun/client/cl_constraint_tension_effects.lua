@@ -47,7 +47,7 @@ net.Receive( "tension_send_clientashake", function()
         local ply = LocalPlayer()
         if not IsValid( ply ) then return end -- not loaded
         local moveType = ply:GetMoveType()
-        if moveType == MOVETYPE_NOCLIP and not ply:InVehicle() then
+        if moveType == MOVETYPE_NOCLIP and not ply:InVehicle() then -- no shake in air feels lame, do barely any shake instead
             amp = amp / 8
 
         end
@@ -56,12 +56,17 @@ net.Receive( "tension_send_clientashake", function()
     amp = amp * volumeMul
     freq = freq * volumeMul
 
+    if amp <= 0.01 then return end -- nonsense shake
+
     local timeDelay, dist = getTimeDelayToFeel( pos )
     if dist > 8000 then
         amp = amp / 8
         freq = freq / 2
 
+        if amp <= 0.01 then return end
+
     end
+
     timer.Simple( timeDelay, function()
         local added = ( amp / 1500 ) -- stop screenshake from going too crazy please
         local currBlock = block + added
