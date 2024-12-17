@@ -33,6 +33,7 @@ local function getTimeDelayToFeel( ref )
 end
 
 local block = 0
+local tooSmol = 0.02
 
 net.Receive( "tension_send_clientashake", function()
     if not shakeEnabled then return end
@@ -56,14 +57,16 @@ net.Receive( "tension_send_clientashake", function()
     amp = amp * volumeMul
     freq = freq * volumeMul
 
-    if amp <= 0.01 then return end -- nonsense shake
+    if amp <= tooSmol then return end -- nonsense shake
+    if freq <= tooSmol then return end
 
     local timeDelay, dist = getTimeDelayToFeel( pos )
     if dist > 8000 then
         amp = amp / 8
         freq = freq / 2
 
-        if amp <= 0.01 then return end
+        if amp <= tooSmol then return end
+        if freq <= tooSmol then return end
 
     end
 
