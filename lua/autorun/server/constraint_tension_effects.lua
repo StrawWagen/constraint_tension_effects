@@ -154,10 +154,12 @@ function TENSION_TBL.handleContraptionDiameter( constr, data ) -- overcomplicate
     local pos2 = data.ent2:GetPos()
 
     local toUpdate = {}
+    local touchedEnts = {}
 
     local furthestDistSqr = 0
     local connectedEnts = constraint.GetAllConstrainedEntities( data.ent1 )
     for _, ent in pairs( connectedEnts ) do
+        table.insert( touchedEnts, ent )
         local entsPos = ent:GetPos()
         local toPos1 = entsPos:DistToSqr( pos1 )
         if toPos1 > furthestDistSqr then
@@ -213,6 +215,11 @@ function TENSION_TBL.handleContraptionDiameter( constr, data ) -- overcomplicate
 
             end
         end
+    end
+
+    for _, touchedEnt in pairs( touchedEnts ) do
+        touchedEnt.tension_contraptionDiameter = furthestDist -- for easy access
+
     end
 
     for _, currData in ipairs( dataToUpdate ) do
@@ -362,8 +369,8 @@ local function HandleSNAP( const )
         TENSION_TBL.playSnapEffects( leastMass, mostMass, significance )
 
         if IsValid( ent1 ) then
-            TENSION_TBL.tryInternalEcho( ent1 )
-            hook.Add( "tension_onreallylaggin", ent1, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end )
+            TENSION_TBL.tryInternalEcho( ent1 ) -- make the snap echo through the contraption
+            hook.Add( "tension_onreallylaggin", ent1, function( self, lagScale ) return reallyLagginHook( self, lagScale ) end ) -- and freeze this prop if the session starts lagging
 
         end
         if IsValid( ent2 ) then
@@ -1037,6 +1044,7 @@ local nearHitSounds = {
 }
 
 local dustFindOffset = Vector( 0, 0, -16000 )
+local vertOnly = Vector( 0.25, 0.25, 1 )
 
 function TENSION_TBL.bigFallEffects( ent, obj )
     if ent.tensionFallInfo then return end
@@ -1059,6 +1067,8 @@ function TENSION_TBL.bigFallEffects( ent, obj )
         local tensionFallInfo = ent.tensionFallInfo
 
         local itsVel = obj:GetVelocity()
+        itsVel = itsVel * vertOnly -- only if its FALLING please, caused problems with destructible vehicles
+
         local currLengSqr = itsVel:LengthSqr()
         local oldLengSqr = tensionFallInfo.lastVelLengSqr
 
