@@ -1235,6 +1235,8 @@ hook.Add( "OnEntityCreated", "tension_findconstraints", function( constr )
         if not IsValid( constr ) then return end
         local significance, ent1, ent2 = getConstraintSignificance( constr )
 
+        if not ( ent1 and ent2 ) then return end
+
         if adminOnly and CPPI and IsValid( ent1 ) then
             local owner = ent1:CPPIGetOwner()
             if not IsValid( owner ) and IsValid( ent2 ) then
