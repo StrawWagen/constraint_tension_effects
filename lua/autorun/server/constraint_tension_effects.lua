@@ -360,7 +360,7 @@ local function HandleSNAP( const )
         elseif not ( IsValid( leastMass ) and IsValid( mostMass ) ) then
             return
 
-        elseif not obj1:IsMotionEnabled() and not obj2:IsMotionEnabled() then -- both are frozen, likely the constraint was undone
+        elseif ( IsValid( obj1 ) and IsValid( obj2 ) ) and not obj1:IsMotionEnabled() and not obj2:IsMotionEnabled() then -- both are frozen, likely the constraint was undone
             return
 
         end
