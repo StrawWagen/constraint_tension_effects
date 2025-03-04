@@ -45,8 +45,23 @@ local math_Rand = math.Rand
 
 local wasSomethingWorthFreezing
 
+local overridingMats = {
+    ["flesh"] = true
+
+}
+local noGenericMats = {
+    ["flesh"] = true
+
+}
+local materialAliases = {
+    ["antlion"] = "flesh",
+
+}
+
 local potentialMaterials = {
     "wood",
+    "flesh",
+    "antlion",
     --"concrete", -- not enough super heavy concrete sounds
 }
 
@@ -56,31 +71,54 @@ local function getMaterialForEnt( ent )
     local cached = ent.tension_CachedSoundMaterial
     if cached then return cached end
 
+    local theMat
     local stringToCheck = ent:GetMaterial()
 
-    if stringToCheck == "" then
+    if stringToCheck ~= "" then
+        local loweredStr = string_lower( stringToCheck )
+
+        for _, currMat in ipairs( potentialMaterials ) do
+            if string_find( loweredStr, currMat ) then
+                --print( loweredStr, currMat, ent:GetModel() )
+                theMat = currMat
+                break
+
+            end
+        end
+    end
+
+    if not theMat then
         local entsObj = ent:GetPhysicsObject()
         if IsValid( entsObj ) then
             stringToCheck = entsObj:GetMaterial()
 
         end
+        local loweredStr = string_lower( stringToCheck )
+
+        for _, currMat in ipairs( potentialMaterials ) do
+            if string_find( loweredStr, currMat ) then
+                --print( loweredStr, currMat, ent:GetModel() )
+                theMat = currMat
+                break
+
+            end
+        end
     end
 
-    local loweredStr = string_lower( stringToCheck )
-    local theMat = "generic"
+    if not theMat then
+        theMat = "generic"
 
-    for _, currMat in ipairs( potentialMaterials ) do
-        if string_find( loweredStr, currMat ) then
-            --print( loweredStr, currMat, ent:GetModel() )
-            theMat = currMat
-            break
+    end
 
-        end
+    local alias = materialAliases[theMat]
+    if alias then
+        theMat = alias
+
     end
 
     ent.tension_CachedSoundMaterial = theMat
 
-    timer.Simple( 5, function()
+    timer.Simple( 5, function() -- props WILL get their material changed
         if not IsValid( ent ) then return end
         ent.tension_CachedSoundMaterial = nil
 
@@ -383,17 +421,27 @@ end
 
 local function getAppropriateSoundDat( sounds, stress, mat )
     local pickedSoundDat
-    local bestStress = 0
+    local bestStress = -1
+    local needsOneOfMat = noGenericMats[mat]
+
     for _, currDat in ipairs( sounds ) do
         local currStress = currDat.stress
 
-        if currStress > stress then continue end
+        if currStress > stress then continue end -- this sound is too stressful, dont pick
 
-        if bestStress > currStress then continue end
-        bestStress = currStress
+        if bestStress > currStress then continue end -- this one is too weak, dont pick
 
         local soundsForMats = currDat.sounds
-        pickedSoundDat = soundsForMats[mat] or soundsForMats["generic"]
+        local currSoundDat = soundsForMats[mat]
+
+        if not currSoundDat then
+            if needsOneOfMat then continue end -- this mat cant fall back to generic
+            currSoundDat = soundsForMats["generic"]
+
+        end
+
+        bestStress = currStress
+        pickedSoundDat = currSoundDat
 
     end
     return pickedSoundDat
@@ -563,7 +611,18 @@ end
 
 local function playAppropriateSound( ent1, ent2, sounds, stress, matFallback )
 
-    local mat = getMaterialForEnt( ent1 ) or matFallback
+    local ent1Mat = getMaterialForEnt( ent1 )
+    local ent2Mat = getMaterialForEnt( ent2 )
+    local mat = ent1Mat
+
+    if overridingMats[ ent2Mat ] and not overridingMats[ ent1Mat ] then
+        mat = ent2Mat
+
+    end
+    if not mat then
+        mat = matFallback
+
+    end
 
     local bestDat = getAppropriateSoundDat( sounds, stress, mat )
     if not bestDat then return end
@@ -616,6 +675,23 @@ TENSION_TBL.stressSounds = {
                 maxpitch = 110,
                 shake = { rad = 500, amp = 1 }
             },
+            flesh = {
+                paths = {
+                    "physics/body/body_medium_impact_soft1.wav",
+                    "physics/body/body_medium_impact_soft2.wav",
+                    "physics/body/body_medium_impact_soft3.wav",
+                    "physics/body/body_medium_impact_soft4.wav",
+                    "physics/body/body_medium_impact_soft5.wav",
+                    "physics/body/body_medium_impact_soft6.wav",
+                    "physics/body/body_medium_impact_soft7.wav",
+
+                },
+                chan = CHAN_BODY,
+                lvl = 82,
+                minpitch = 80,
+                maxpitch = 110,
+                shake = { rad = 500, amp = 1 }
+            },
         }
     },
     {
@@ -656,6 +732,19 @@ TENSION_TBL.stressSounds = {
                 minpitch = 60,
                 maxpitch = 80,
                 shake = { rad = 1000, amp = 2 }
+            },
+            flesh = {
+                paths = {
+                    "physics/body/body_medium_break2.wav",
+                    "physics/body/body_medium_break3.wav",
+                    "physics/body/body_medium_break4.wav",
+
+                },
+                chan = CHAN_BODY,
+                lvl = 88,
+                minpitch = 70,
+                maxpitch = 90,
+                shake = { rad = 500, amp = 1 }
             },
         }
     },
@@ -827,6 +916,24 @@ TENSION_TBL.snapSounds = {
                 maxpitch = 150,
                 shake = { rad = 500, amp = 1 }
             },
+            flesh = {
+                paths = {
+                    "physics/flesh/flesh_squishy_impact_hard1.wav",
+                    "physics/flesh/flesh_squishy_impact_hard2.wav",
+                    "physics/flesh/flesh_squishy_impact_hard3.wav",
+                    "physics/flesh/flesh_squishy_impact_hard4.wav",
+                    "physics/body/body_medium_break2.wav",
+                    "physics/body/body_medium_break3.wav",
+                    "physics/body/body_medium_break4.wav",
+
+                },
+                chan = CHAN_STATIC,
+                lvl = 90,
+                minpitch = 40,
+                maxpitch = 60,
+                twicedoublepitch = true,
+                shake = { rad = 1500, amp = 2 }
+            },
         }
     },
     {
@@ -867,6 +974,19 @@ TENSION_TBL.snapSounds = {
                 lvl = 82,
                 minpitch = 95,
                 maxpitch = 110,
+                shake = { rad = 500, amp = 1 }
+            },
+            flesh = {
+                paths = {
+                    "physics/body/body_medium_break2.wav",
+                    "physics/body/body_medium_break3.wav",
+                    "physics/body/body_medium_break4.wav",
+
+                },
+                chan = CHAN_BODY,
+                lvl = 88,
+                minpitch = 70,
+                maxpitch = 90,
                 shake = { rad = 500, amp = 1 }
             },
         }
@@ -1303,7 +1423,7 @@ end )
 local nextThink = 0
 local nextWhine = 0
 
-hook.Add( "Think", "tension_stresssounds", function()
+hook.Add( "Think", "tension_mainthinker", function()
     local cur = CurTime()
     if nextThink > cur then return end
     nextThink = cur + 0.05
