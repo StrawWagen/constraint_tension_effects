@@ -123,6 +123,8 @@ local function getMaterialForEnt( ent )
         ent.tension_CachedSoundMaterial = nil
 
     end )
+    return theMat
+
 end
 
 TENSION_TBL.getMaterialForEnt = getMaterialForEnt
