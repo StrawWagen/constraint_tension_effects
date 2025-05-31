@@ -1241,7 +1241,7 @@ function TENSION_TBL.bigFallEffects( ent, obj )
             local mass = obj:GetMass()
             local volume = obj:GetVolume()
 
-            local passVolume = volume > math_random( 641002, 854670 ) -- mmm, magic numbers
+            local passVolume = volume and volume > math_random( 641002, 854670 ) -- mmm, magic numbers
             local bestSpeedSqr = tensionFallInfo.bestSpeedAchieved
 
             -- give punch to bouncing debris
